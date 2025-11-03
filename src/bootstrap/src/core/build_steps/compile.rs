@@ -142,7 +142,7 @@ impl Step for Std {
         trace!("download_rustc: {}", builder.download_rustc());
         trace!(force_recompile);
 
-        run.builder.ensure(Std {
+        let std = Std {
             // Note: we don't use compiler_for_std here, so that `x build library --stage 2`
             // builds a stage2 rustc.
             build_compiler: run.builder.compiler(run.builder.top_stage, builder.host_target),
@@ -152,7 +152,12 @@ impl Step for Std {
             extra_rust_args: &[],
             is_for_mir_opt_tests: false,
             asan: false,
-        });
+        };
+
+        if builder.config.needs_sanitizer_runtime_built(run.target) {
+            run.builder.ensure(std.clone().asan(true));
+        }
+        run.builder.ensure(std.asan(false));
     }
 
     /// Builds the standard library.
@@ -1619,9 +1624,9 @@ impl Step for RustcLink {
         };
 
         let host_libdir = if self.asan {
-            builder.sysroot_target_asan_libdir(sysroot_compiler, build_compiler.host)
+            builder.sysroot_target_asan_libdir(sysroot_compiler, sysroot_compiler.host)
         } else {
-            builder.sysroot_target_libdir(sysroot_compiler, build_compiler.host)
+            builder.sysroot_target_libdir(sysroot_compiler, sysroot_compiler.host)
         };
 
         add_to_sysroot(
@@ -2357,7 +2362,7 @@ impl Step for Assemble {
         }
 
         // Copy ASAN libraries to the sysroot
-        let rustc_libdir = builder.sysroot_target_asan_libdir(build_compiler, host);
+        let rustc_libdir = builder.sysroot_target_asan_libdir(target_compiler, host);
         t!(fs::create_dir_all(&rustc_libdir));
         let src_libdir = builder.sysroot_target_asan_libdir(build_compiler, host);
         for f in builder.read_dir(&src_libdir) {
